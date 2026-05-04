@@ -6,14 +6,32 @@
 
 // GUItool: begin automatically generated code
 AudioInputI2S            i2s1;           //xy=55,386
-AudioAmplifier           amp1;           //xy=174,380
-AudioEffectWaveshaper    waveshape1;     //xy=320,381
-AudioOutputI2S           i2s2;           //xy=485,384
-AudioConnection          patchCord1(i2s1, 0, amp1, 0);
-AudioConnection          patchCord2(amp1, waveshape1);
-AudioConnection          patchCord3(waveshape1, 0, i2s2, 0);
+AudioFilterBiquad        biquad_high;        //xy=214,404
+AudioFilterBiquad        biquad_low;        //xy=215,351
+AudioAmplifier           amp1;           //xy=380,350
+AudioAmplifier           amp3; //xy=380,411
+AudioEffectWaveshaper    waveshape_low;     //xy=536,354
+AudioEffectWaveshaper    waveshape_high;     //xy=542,411
+AudioAmplifier           amp2;           //xy=681,350
+AudioAmplifier           amp4; //xy=681,411
+AudioMixer4              mixer1;         //xy=814,397
+AudioOutputI2S           i2s2;           //xy=958,388
+AudioConnection          patchCord1(i2s1, 0, biquad_low, 0);
+AudioConnection          patchCord2(i2s1, 0, biquad_high, 0);
+AudioConnection          patchCord3(biquad_high, amp3);
+AudioConnection          patchCord4(biquad_low, amp1);
+AudioConnection          patchCord5(amp1, waveshape_low);
+AudioConnection          patchCord6(amp3, waveshape_high);
+AudioConnection          patchCord7(waveshape_low, amp2);
+AudioConnection          patchCord8(waveshape_high, amp4);
+AudioConnection          patchCord9(amp2, 0, mixer1, 0);
+AudioConnection          patchCord10(amp4, 0, mixer1, 1);
+AudioConnection          patchCord11(mixer1, 0, i2s2, 0);
 AudioControlSGTL5000     sgtl5000_1;     //xy=159,497
 // GUItool: end automatically generated code
+
+
+
 
 float soft_clip_table[513]; 
 
@@ -51,15 +69,32 @@ void setup() {
     // Simple cubic soft-clipper: 1.5*x - 0.5*x^3
     soft_clip_table[i] = 1.5f * x - 0.5f * (x * x * x);
   }
+// --- Setup Linkwitz-Riley 4th Order Crossover ---
+  float crossFreq = 250.0;
+  float q = 0.7071;
+
+  // Cascade two Butterworth lowpass stages to make an LR4 lowpass
+  biquad_low.setLowpass(0, crossFreq, q);
+  biquad_low.setLowpass(1, crossFreq, q);
+
+  // Cascade two Butterworth highpass stages to make an LR4 highpass
+  biquad_high.setHighpass(0, crossFreq, q);
+  biquad_high.setHighpass(1, crossFreq, q);
 
   // Teensy Audio Library's built-in waveshape function: maps input to clipped output
-  waveshape1.shape(soft_clip_table, 513); // cubic soft-clipping
+  waveshape_low.shape(soft_clip_table, 513); // cubic soft-clipping
+  waveshape_high.shape(soft_clip_table, 513); // cubic soft-clipping
+
+  
 
   //waveshape1.shape(arctan_table, 33); // arctangent soft-clipping
 
   //waveshape1.shape(sin_table, 33);  // sine soft-clipping
 
   amp1.gain(5.0); 
+  amp2.gain(0.05);
+  amp3.gain(5.0); 
+  amp4.gain(0.05);
 
 }
 
