@@ -1,0 +1,13 @@
+# Arduino IDE build directories
+build/
+*.elf
+*.hex
+*.bin
+*.eep
+*.o
+*.d
+*.a
+
+# OS generated files
+.DS_Store
+Thumbs.db
