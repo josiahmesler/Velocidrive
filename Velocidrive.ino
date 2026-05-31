@@ -32,6 +32,8 @@ AudioConnection          patchCord12(mixer1, 0, i2s2, 0);
 AudioControlSGTL5000     sgtl5000_1;     //xy=159,497
 // GUItool: end automatically generated code
 
+// Define pin for 'Drive' potentiometer (adjusts base distortion level)
+const int digiPot = A0; 
 
 // Define size of waveshaper array
 float soft_clip_table[513]; 
@@ -41,8 +43,17 @@ float windowed_rms = 0.0; // moving average for rms
 float last_windowed_rms = 0.0;
 float alpha_bass = 0.05; // creates a ~58ms smoothing window??
 
-float base_drive = 2.0;  // later: dynamic parameter set by potentiometer  
-float max_drive = 15.0;  // maximum pre-waveshaper gain to keep some tone
+// Default gain parameters, these are overwritten in the loop
+float low_drive = 3.0;
+float low_cut = 0.17;
+float base_drive = 5.0; // minimum gain for high-end band
+float high_drive = base_drive; // default to base_drive
+
+const float high_cut = 0.1; 
+
+// For dynamically adjusting high_drive according to tempo and average amplitude ('smart' functionality)
+float max_drive = 18.0;  // maximum pre-waveshaper gain to keep some tone, default to 18 but later set to base_drive + smart_range
+float smart_range = 10.0; // max_drive - base_drive
 float rms_sensitivity = 25.0; // multiplier to scale the RMS into drive
 
 void setup() {
@@ -51,6 +62,7 @@ void setup() {
   // Configure the Audio Shield
   sgtl5000_1.enable();
   sgtl5000_1.inputSelect(AUDIO_INPUT_LINEIN);
+  sgtl5000_1.lineInLevel(15); // max for maximal clipping
   sgtl5000_1.unmuteLineout();
   sgtl5000_1.lineOutLevel(29);  // default
   
@@ -61,7 +73,7 @@ void setup() {
     soft_clip_table[i] = 1.5f * x - 0.5f * (x * x * x);
   }
 
-  // --- Setup Linkwitz-Riley 4th Order Crossover ---
+  // Set up Linkwitz-Riley 4th Order Crossover
   float crossFreq = 250.0;
   float q = 0.7071;
 
@@ -78,17 +90,37 @@ void setup() {
   waveshape2.shape(soft_clip_table, 513); // distort high frequency band
 
 
-  // Fix magic numbers later
-  // Static low-end distortion for oomph, 'smart' high end distortion
-  amp1.gain(2.5); 
-  amp2.gain(0.2);
-  amp3.gain(base_drive); 
-  amp4.gain(0.1);
+  // Initialized amplifiers. All are dynamic except high_cut (static 0.1)
+  // _drive variables boost signal amplitude (>1)
+  // _cut variables attenuate signal amplidute (<1)
+  amp1.gain(low_drive); 
+  amp2.gain(low_cut);
+  amp3.gain(high_drive); 
+  amp4.gain(high_cut);
 
   Serial.begin(115200);
 }
 
 void loop(){
+  // Set gain according to distortion control potentiometer reading
+  int potValue = analogRead(digiPot);
+
+  // Map 'Drive' pot value to minimum high-end drive in range [0,10]
+  base_drive = map(potValue, 0, 1023, 0, 10);
+
+  // Also map to low-end digital gain 
+  low_drive = map(potValue, 0, 1023, 1, 6);
+
+  // Map low-end drive to low-end attenuation factor (low_cut) to keep output voltage level constant for any potValue
+  // This way the 'Drive' pot changes distortion (more drive means more clipping) but not gain
+  low_cut = map(low_drive, 1, 6, 0.5, 0.25);
+
+  // Dynamically set low-end drive only according to 'Drive' pot (not 'smart')
+  amp1.gain(low_drive); 
+  amp2.gain(low_cut);
+
+  max_drive = base_drive + smart_range;
+
   if (rms_detector.available()) {
   
     // Get raw RMS block reading (triggers every 128 samples = ~2.9 ms)
@@ -123,7 +155,10 @@ void loop(){
     // Set the amp_drive by adding the dynamic_intensity to the base distortion level
     float amp_drive = base_drive + dynamic_intensity;
 
-    last_windowed_rms = windowed_rms;
+    //float derivative = windowed_rms - last_windowed_rms;
+        
+
+    //last_windowed_rms = windowed_rms;
 
     // Clamp to max
     if (amp_drive > max_drive) {
@@ -133,7 +168,7 @@ void loop(){
     // Apply to the pre-distortion gain for the high frequency band to change distortion texture
     amp3.gain(amp_drive);
 
-    // --- Serial Outputs for the Plotter ---
+    // Serial outputs for the serial plotter
     Serial.print("Raw_RMS:");
     Serial.print(raw_rms * 10.0); // Scaled up so we can see it next to the drive
     Serial.print(",");
